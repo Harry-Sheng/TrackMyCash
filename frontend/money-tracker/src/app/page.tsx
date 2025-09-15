@@ -27,7 +27,7 @@ import {
   IconWallet,
   IconCurrencyDollar,
 } from "@tabler/icons-react"
-import { Center } from "@mantine/core"
+import { Center, Select } from "@mantine/core"
 
 import { useMonthData, useTotals } from "./lib/useMoneyApi"
 
@@ -72,14 +72,19 @@ export default function ExpenseTrackerMantine() {
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
 
-  const SLICE_COLORS = [
-    "teal.6",
-    "blue.6",
-    "grape.6",
-    "orange.6",
-    "red.6",
-    "cyan.6",
+  const CATEGORIES: { name: string; color: string }[] = [
+    { name: "Food", color: "teal.6" },
+    { name: "Transport", color: "blue.6" },
+    { name: "Housing", color: "grape.6" },
+    { name: "Shopping", color: "orange.6" },
+    { name: "Entertainment", color: "red.6" },
+    { name: "Other", color: "cyan.6" },
   ]
+
+  function tokenToVar(token: string) {
+    const [h, i] = token.split(".")
+    return `var(--mantine-color-${h}-${i})`
+  }
 
   // --- Client-side totals (fallback while summary loads)
   const { totalIncome, totalExpenses, balance, spentPct, expensesByCategory } =
@@ -184,11 +189,14 @@ export default function ExpenseTrackerMantine() {
           ) : (
             <Center>
               <PieChart
-                data={breakdown.map((c, i) => ({
-                  name: c.category,
-                  value: c.amount,
-                  color: SLICE_COLORS[i % SLICE_COLORS.length],
-                }))}
+                data={CATEGORIES.map((c) => {
+                  const found = breakdown.find((b) => b.category === c.name)
+                  return {
+                    name: c.name,
+                    value: found ? found.amount : 0,
+                    color: c.color,
+                  }
+                }).filter((d) => d.value > 0)}
                 withLabels
                 labelsPosition="inside"
                 size={260}
@@ -198,6 +206,25 @@ export default function ExpenseTrackerMantine() {
             </Center>
           )}
         </Box>
+        <Stack gap="xs" mt="sm" align="center">
+          <Group gap="xs" wrap="wrap" justify="center">
+            {CATEGORIES.map((c) => (
+              <Group key={c.name} gap="xs">
+                <span
+                  aria-hidden
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 4,
+                    background: tokenToVar(c.color),
+                    display: "inline-block",
+                  }}
+                />
+                <Text size="sm">{c.name}</Text>
+              </Group>
+            ))}
+          </Group>
+        </Stack>
       </Card>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
@@ -421,6 +448,14 @@ function AddExpenseModal({
     category.trim().length > 0 &&
     description.trim().length > 0
 
+  const CATEGORIES: { name: string; color: string }[] = [
+    { name: "Food", color: "teal.6" },
+    { name: "Transport", color: "blue.6" },
+    { name: "Housing", color: "grape.6" },
+    { name: "Shopping", color: "orange.6" },
+    { name: "Entertainment", color: "red.6" },
+    { name: "Other", color: "cyan.6" },
+  ]
   return (
     <Modal opened={opened} onClose={onClose} title="Add expense" radius="lg">
       <Stack>
@@ -433,11 +468,13 @@ function AddExpenseModal({
           min={0}
           hideControls
         />
-        <TextInput
+
+        <Select
           label="Category"
-          placeholder="Transportation, Shopping, …"
+          placeholder="Pick category"
+          data={CATEGORIES.map((c) => c.name)}
           value={category}
-          onChange={(e) => setCategory(e.currentTarget.value)}
+          onChange={(val) => setCategory(val || "")}
         />
         <TextInput
           label="Description"
