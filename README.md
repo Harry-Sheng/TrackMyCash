@@ -1,6 +1,6 @@
 # TrackMyCash
 
-A simple income & expense tracker for students.  
+An income & expense tracker for students.  
 Built with **Next.js + Mantine (frontend)** and **C# .NET + PostgreSQL (backend)**.
 ![TrackMyCash Screenshot](./assets/mainPage.png)
 The app lets you:
@@ -11,7 +11,7 @@ The app lets you:
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 
@@ -37,7 +37,7 @@ dotnet run
 ```
 
 Backend will run at:  
-👉 `http://localhost:5015` (Swagger UI at `/swagger`)
+`http://localhost:5015` (Swagger UI at `/swagger`)
 
 ### Frontend Setup
 
@@ -53,7 +53,7 @@ npm run dev
 ```
 
 Frontend will run at:  
-👉 `http://localhost:3000`
+`http://localhost:3000`
 
 ### Environment variables
 
@@ -75,7 +75,7 @@ In `backend/appsettings.json` update your PostgreSQL connection:
 
 ---
 
-## 📖 Usage Examples
+## Usage Examples
 
 ### Adding Income
 
