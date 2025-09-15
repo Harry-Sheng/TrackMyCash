@@ -1,41 +1,89 @@
+// Program.cs (statements only)
+using Microsoft.EntityFrameworkCore;
+using MoneyApi.Data;
+using MoneyApi.Models;
+using MoneyApi.Contracts;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// EF Core + SQLite
+builder.Services.AddDbContext<AppDb>(opt =>
+    opt.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+
+// Swagger + CORS
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+builder.Services.AddCors(opts =>
+{
+    opts.AddDefaultPolicy(policy => policy
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .WithOrigins(
+            "http://localhost:3000",
+            Environment.GetEnvironmentVariable("FRONTEND_ORIGIN") ?? "http://localhost:3000"
+        ));
+});
 
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI();
+app.UseCors();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Validation helper
+bool IsValidType(string t) => t is "Income" or "Expense";
+
+// POST /api/tx
+app.MapPost("/api/tx", async (CreateTxDto dto, AppDb db) =>
 {
-    app.MapOpenApi();
-}
+    if (!IsValidType(dto.Type)) return Results.BadRequest("Type must be 'Income' or 'Expense'");
+    if (dto.Amount <= 0) return Results.BadRequest("Amount must be > 0");
 
-app.UseHttpsRedirection();
+    var tx = new TransactionEntry
+    {
+        OccurredOn = dto.OccurredOn.Date,
+        Type = dto.Type,
+        Amount = dto.Amount,
+        Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description
+    };
+    db.Transactions.Add(tx);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/tx/{tx.Id}", tx);
+});
 
-var summaries = new[]
+// GET /api/tx?year=&month=
+app.MapGet("/api/tx", async (int? year, int? month, AppDb db) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    var now = DateTime.UtcNow;
+    var y = year ?? now.Year;
+    var m = month ?? now.Month;
+    var start = new DateTime(y, m, 1);
+    var end = start.AddMonths(1);
 
-app.MapGet("/weatherforecast", () =>
+    var items = await db.Transactions
+        .Where(t => t.OccurredOn >= start && t.OccurredOn < end)
+        .OrderByDescending(t => t.OccurredOn).ThenByDescending(t => t.Id)
+        .ToListAsync();
+
+    return Results.Ok(new ListResult(items));
+});
+
+// GET /api/tx/summary?year=&month=
+app.MapGet("/api/tx/summary", async (int? year, int? month, AppDb db) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    var now = DateTime.UtcNow;
+    var y = year ?? now.Year;
+    var m = month ?? now.Month;
+    var start = new DateTime(y, m, 1);
+    var end = start.AddMonths(1);
+
+    var monthQuery = db.Transactions.Where(t => t.OccurredOn >= start && t.OccurredOn < end);
+
+    var income = await monthQuery.Where(t => t.Type == "Income").SumAsync(t => (decimal?)t.Amount) ?? 0m;
+    var expense = await monthQuery.Where(t => t.Type == "Expense").SumAsync(t => (decimal?)t.Amount) ?? 0m;
+    var balance = income - expense;
+    var spentPercent = income <= 0 ? 100m : Math.Min(100m, Math.Round((expense / income) * 100m, 0));
+
+    return Results.Ok(new SummaryResult(income, expense, balance, spentPercent));
+});
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

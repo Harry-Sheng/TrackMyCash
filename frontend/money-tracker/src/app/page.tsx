@@ -28,6 +28,7 @@ import {
   IconWallet,
   IconCurrencyDollar,
 } from "@tabler/icons-react"
+import { Center } from "@mantine/core"
 
 interface Income {
   id: string
@@ -179,17 +180,20 @@ export default function ExpenseTrackerMantine() {
               No expenses yet — add one to see the chart
             </Text>
           ) : (
-            <PieChart
-              data={categoryPercentages.map((c, i) => ({
-                name: c.category,
-                value: c.amount,
-                color: SLICE_COLORS[i % SLICE_COLORS.length],
-              }))}
-              withLabels
-              labelsPosition="outside"
-              size={240}
-              tooltipDataSource="segment"
-            />
+            <Center>
+              <PieChart
+                data={categoryPercentages.map((c, i) => ({
+                  name: c.category,
+                  value: c.amount,
+                  color: SLICE_COLORS[i % SLICE_COLORS.length],
+                }))}
+                withLabels
+                labelsPosition="inside"
+                size={260}
+                tooltipDataSource="segment"
+                labelsType="percent"
+              />
+            </Center>
           )}
         </Box>
       </Card>
