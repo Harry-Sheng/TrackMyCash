@@ -75,6 +75,14 @@ export default function ExpenseTrackerMantine() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
+  const SLICE_COLORS = [
+    "teal.6",
+    "blue.6",
+    "grape.6",
+    "orange.6",
+    "red.6",
+    "cyan.6",
+  ]
 
   const totalIncome = useMemo(
     () => incomes.reduce((sum, i) => sum + i.amount, 0),
@@ -123,8 +131,6 @@ export default function ExpenseTrackerMantine() {
           Track your income and expenses to stay on top of your finances
         </Text>
       </Stack>
-
-      {/* Summary */}
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
         <StatCard
           label="Total Income"
@@ -162,7 +168,6 @@ export default function ExpenseTrackerMantine() {
           />
         </Card>
       </SimpleGrid>
-
       {/* Spending overview */}
       <Card withBorder radius="lg" mt="md">
         <Group justify="space-between" p="md" pb={0}>
@@ -175,9 +180,10 @@ export default function ExpenseTrackerMantine() {
             </Text>
           ) : (
             <PieChart
-              data={categoryPercentages.map((c) => ({
+              data={categoryPercentages.map((c, i) => ({
                 name: c.category,
                 value: c.amount,
+                color: SLICE_COLORS[i % SLICE_COLORS.length],
               }))}
               withLabels
               labelsPosition="outside"
@@ -187,7 +193,6 @@ export default function ExpenseTrackerMantine() {
           )}
         </Box>
       </Card>
-
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
         {/* Income */}
         <Card withBorder radius="lg">
@@ -282,7 +287,6 @@ export default function ExpenseTrackerMantine() {
           </Box>
         </Card>
       </SimpleGrid>
-
       {/* Add Income Modal */}
       <AddIncomeModal
         opened={incomeOpen}
@@ -292,7 +296,6 @@ export default function ExpenseTrackerMantine() {
           setIncomeOpen(false)
         }}
       />
-
       {/* Add Expense Modal */}
       <AddExpenseModal
         opened={expenseOpen}
