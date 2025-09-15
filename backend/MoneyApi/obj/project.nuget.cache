@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "ZhXOvXBUyL4=",
+  "success": true,
+  "projectFilePath": "/Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/MoneyApi.csproj",
+  "expectedPackageFiles": [
+    "/Users/harry/.nuget/packages/microsoft.aspnetcore.openapi/9.0.9/microsoft.aspnetcore.openapi.9.0.9.nupkg.sha512",
+    "/Users/harry/.nuget/packages/microsoft.openapi/1.6.17/microsoft.openapi.1.6.17.nupkg.sha512"
+  ],
+  "logs": []
+}
