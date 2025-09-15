@@ -1,239 +1,435 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import React, { useMemo, useState } from "react"
 import {
+  Badge,
+  Box,
   Button,
   Card,
+  Container,
+  Divider,
   Group,
+  Modal,
   NumberInput,
-  SegmentedControl,
+  Progress,
+  SimpleGrid,
+  Stack,
+  Table,
   Text,
   TextInput,
   Title,
-  Divider,
-  Badge,
-  Loader,
-  Stack,
-  Container,
-  Paper,
-  Progress,
+  rem,
 } from "@mantine/core"
-import { DateInput } from "@mantine/dates"
-import dayjs from "dayjs"
+import { PieChart } from "@mantine/charts"
+import {
+  IconPlus,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconWallet,
+  IconCurrencyDollar,
+} from "@tabler/icons-react"
 
-type TxType = "Income" | "Expense"
-
-type Tx = {
-  id: number
-  occurredOn: string // ISO
-  type: TxType
+interface Income {
+  id: string
   amount: number
-  description?: string | null
+  source: string
+  date: string
 }
 
-type Summary = {
-  income: number
-  expense: number
-  balance: number
-  spentPercent: number
+interface Expense {
+  id: string
+  amount: number
+  category: string
+  description: string
+  date: string
 }
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL // e.g. http://localhost:5179
+function StatCard({
+  label,
+  value,
+  color,
+  icon,
+}: {
+  label: string
+  value: string
+  color?: string
+  icon?: React.ReactNode
+}) {
+  return (
+    <Card withBorder radius="lg" padding="md">
+      <Group justify="space-between" mb="xs">
+        <Text size="sm" c="dimmed" fw={500}>
+          {label}
+        </Text>
+        <Box c={color}>{icon}</Box>
+      </Group>
+      <Text fw={700} size="xl" c={color}>
+        {value}
+      </Text>
+    </Card>
+  )
+}
 
-export default function Page() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+export default function ExpenseTrackerMantine() {
+  const [incomes, setIncomes] = useState<Income[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [incomeOpen, setIncomeOpen] = useState(false)
+  const [expenseOpen, setExpenseOpen] = useState(false)
 
-  const [loading, setLoading] = useState(true)
-  const [list, setList] = useState<Tx[]>([])
-  const [summary, setSummary] = useState<Summary | null>(null)
+  const totalIncome = useMemo(
+    () => incomes.reduce((sum, i) => sum + i.amount, 0),
+    [incomes]
+  )
+  const totalExpenses = useMemo(
+    () => expenses.reduce((sum, e) => sum + e.amount, 0),
+    [expenses]
+  )
+  const remainingBalance = totalIncome - totalExpenses
+  const spentPercentage =
+    totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0
 
-  const [formType, setFormType] = useState<TxType>("Expense")
-  const [formDate, setFormDate] = useState<Date | null>(new Date())
-  const [formAmount, setFormAmount] = useState<number | "">("")
-  const [formDesc, setFormDesc] = useState("")
+  // --- Group by category
+  const expensesByCategory = useMemo(() => {
+    const acc: Record<string, number> = {}
+    for (const e of expenses)
+      acc[e.category] = (acc[e.category] || 0) + e.amount
+    return acc
+  }, [expenses])
 
-  const monthLabel = `${year}-${String(month).padStart(2, "0")}`
-
-  async function fetchData() {
-    setLoading(true)
-    const [txRes, sumRes] = await Promise.all([
-      fetch(`${API}/api/tx?year=${year}&month=${month}`),
-      fetch(`${API}/api/tx/summary?year=${year}&month=${month}`),
-    ])
-    const tx = await txRes.json()
-    const sum = await sumRes.json()
-    setList(tx.items ?? [])
-    setSummary(sum)
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    fetchData() /* eslint-disable-next-line */
-  }, [year, month])
-
-  async function addTx() {
-    if (!formDate || typeof formAmount !== "number" || formAmount <= 0) return
-    const body = {
-      occurredOn: dayjs(formDate).format("YYYY-MM-DD"),
-      type: formType,
-      amount: formAmount,
-      description: formDesc || null,
-    }
-    const res = await fetch(`${API}/api/tx`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-    if (res.ok) {
-      setFormAmount("")
-      setFormDesc("")
-      // refetch
-      fetchData()
-    } else {
-      alert("Failed to save")
-    }
-  }
-
-  const totalExpense = useMemo(
+  const categoryPercentages = useMemo(
     () =>
-      list
-        .filter((l) => l.type === "Expense")
-        .reduce((a, b) => a + b.amount, 0),
-    [list]
+      Object.entries(expensesByCategory).map(([category, amount]) => ({
+        category,
+        amount,
+        percentage: totalIncome > 0 ? (amount / totalIncome) * 100 : 0,
+      })),
+    [expensesByCategory, totalIncome]
   )
 
-  function changeMonth(delta: number) {
-    const d = new Date(year, month - 1 + delta, 1)
-    setYear(d.getFullYear())
-    setMonth(d.getMonth() + 1)
+  const addIncome = (income: Omit<Income, "id">) => {
+    setIncomes((prev) => [...prev, { ...income, id: Date.now().toString() }])
+  }
+
+  const addExpense = (expense: Omit<Expense, "id">) => {
+    setExpenses((prev) => [...prev, { ...expense, id: Date.now().toString() }])
   }
 
   return (
-    <Container size="sm" className="py-6">
-      <Title order={2} className="mb-4">
-        Money Tracker
-      </Title>
+    <Container size="lg" py="md">
+      {/* Header */}
+      <Stack gap="xs" align="center" mb="md">
+        <Title order={1}>Expense Tracker</Title>
+        <Text c="dimmed" ta="center">
+          Track your income and expenses to stay on top of your finances
+        </Text>
+      </Stack>
 
-      <Card withBorder shadow="sm" className="mb-4">
-        {summary ? (
-          <Stack gap="xs">
-            <Group justify="space-between">
-              <Text fw={600}>Balance</Text>
-              <Title order={3}>{summary.balance.toFixed(2)}</Title>
-            </Group>
+      {/* Summary */}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+        <StatCard
+          label="Total Income"
+          value={`$${totalIncome.toLocaleString()}`}
+          color="teal"
+          icon={<IconTrendingUp size={18} />}
+        />
+        <StatCard
+          label="Total Expenses"
+          value={`$${totalExpenses.toLocaleString()}`}
+          color="red"
+          icon={<IconTrendingDown size={18} />}
+        />
+        <StatCard
+          label="Remaining Balance"
+          value={`$${remainingBalance.toLocaleString()}`}
+          color={remainingBalance >= 0 ? "teal" : "red"}
+          icon={<IconWallet size={18} />}
+        />
+        <Card withBorder radius="lg" padding="md">
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" c="dimmed" fw={500}>
+              Spent Percentage
+            </Text>
+            <IconCurrencyDollar size={18} />
+          </Group>
+          <Text fw={700} size="xl">
+            {spentPercentage.toFixed(1)}%
+          </Text>
+          <Progress
+            value={spentPercentage}
+            mt="xs"
+            radius="xl"
+            aria-label="spent"
+          />
+        </Card>
+      </SimpleGrid>
 
-            <Group justify="space-between">
-              <Text>Income</Text>
-              <Text fw={600}>{summary.income.toFixed(2)}</Text>
-            </Group>
-
-            <Group justify="space-between">
-              <Text>Expense</Text>
-              <Text fw={600}>{summary.expense.toFixed(2)}</Text>
-            </Group>
-
-            <Text size="sm">Spent {summary.spentPercent.toFixed(0)}%</Text>
-            <Progress
-              value={Math.max(0, Math.min(100, summary.spentPercent))}
+      {/* Spending overview */}
+      <Card withBorder radius="lg" mt="md">
+        <Group justify="space-between" p="md" pb={0}>
+          <Text fw={600}>Spending Overview</Text>
+        </Group>
+        <Box p="md">
+          {categoryPercentages.length === 0 ? (
+            <Text c="dimmed" ta="center" py="lg">
+              No expenses yet — add one to see the chart
+            </Text>
+          ) : (
+            <PieChart
+              data={categoryPercentages.map((c) => ({
+                name: c.category,
+                value: c.amount,
+              }))}
+              withLabels
+              labelsPosition="outside"
+              size={240}
+              tooltipDataSource="segment"
             />
-          </Stack>
-        ) : (
-          <Loader />
-        )}
+          )}
+        </Box>
       </Card>
 
-      <Card withBorder shadow="sm" className="mb-4">
-        <Title order={4} className="mb-2">
-          Add transaction
-        </Title>
-        <Stack>
-          <SegmentedControl
-            value={formType}
-            onChange={(v) => setFormType(v as TxType)}
-            data={[
-              { label: "Expense", value: "Expense" },
-              { label: "Income", value: "Income" },
-            ]}
-          />
-          <DateInput
-            label="Date"
-            value={formDate}
-            onChange={(value) => setFormDate(value ? new Date(value) : null)}
-          />
-          <NumberInput
-            label="Amount"
-            value={formAmount}
-            onChange={(value) =>
-              setFormAmount(value === "" ? "" : Number(value))
-            }
-            thousandSeparator
-            decimalScale={2}
-            placeholder="e.g. 25.50"
-          />
-          <TextInput
-            label="Description (optional)"
-            value={formDesc}
-            onChange={(e) => setFormDesc(e.currentTarget.value)}
-          />
-          <Group justify="flex-end">
+      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
+        {/* Income */}
+        <Card withBorder radius="lg">
+          <Group justify="space-between" p="md" pb={0}>
+            <Text fw={600}>Income Sources</Text>
             <Button
-              onClick={addTx}
-              disabled={
-                !(formDate && typeof formAmount === "number" && formAmount > 0)
-              }
+              leftSection={<IconPlus size={16} />}
+              size="compact-sm"
+              onClick={() => setIncomeOpen(true)}
             >
-              Add
+              Add Income
             </Button>
           </Group>
-        </Stack>
-      </Card>
+          <Box p="md">
+            {incomes.length === 0 ? (
+              <Text c="dimmed" ta="center" py="md">
+                No income sources added yet
+              </Text>
+            ) : (
+              <Stack gap="sm">
+                {incomes.map((i) => (
+                  <Group
+                    key={i.id}
+                    justify="space-between"
+                    p="sm"
+                    style={{
+                      border: "1px solid var(--mantine-color-gray-3)",
+                      borderRadius: rem(8),
+                    }}
+                  >
+                    <div>
+                      <Text fw={500}>{i.source}</Text>
+                      <Text size="sm" c="dimmed">
+                        {i.date}
+                      </Text>
+                    </div>
+                    <Badge color="teal" variant="light">
+                      +${i.amount.toLocaleString()}
+                    </Badge>
+                  </Group>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        </Card>
 
-      <Group justify="space-between" className="mb-2">
-        <Button variant="light" onClick={() => changeMonth(-1)}>
-          ◀ prev
-        </Button>
-        <Text fw={600}>{monthLabel}</Text>
-        <Button variant="light" onClick={() => changeMonth(1)}>
-          next ▶
-        </Button>
-      </Group>
+        {/* Expenses */}
+        <Card withBorder radius="lg">
+          <Group justify="space-between" p="md" pb={0}>
+            <Text fw={600}>Recent Expenses</Text>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              size="compact-sm"
+              onClick={() => setExpenseOpen(true)}
+            >
+              Add Expense
+            </Button>
+          </Group>
+          <Box p="md">
+            {expenses.length === 0 ? (
+              <Text c="dimmed" ta="center" py="md">
+                No expenses recorded yet
+              </Text>
+            ) : (
+              <Stack gap="sm">
+                {expenses
+                  .slice(-5)
+                  .reverse()
+                  .map((e) => (
+                    <Group
+                      key={e.id}
+                      justify="space-between"
+                      p="sm"
+                      style={{
+                        border: "1px solid var(--mantine-color-gray-3)",
+                        borderRadius: rem(8),
+                      }}
+                    >
+                      <div>
+                        <Text fw={500}>{e.description}</Text>
+                        <Text size="sm" c="dimmed">
+                          {e.category} • {e.date}
+                        </Text>
+                      </div>
+                      <Badge color="red" variant="light">
+                        -${e.amount.toLocaleString()}
+                      </Badge>
+                    </Group>
+                  ))}
+              </Stack>
+            )}
+          </Box>
+        </Card>
+      </SimpleGrid>
 
-      <Paper withBorder p="sm">
-        <Group justify="space-between" className="mb-2">
-          <Text fw={600}>This month</Text>
-          {loading && <Loader size="sm" />}
-        </Group>
-        <Divider className="mb-2" />
-        <Stack gap="xs">
-          {list.map((t) => {
-            const pct =
-              t.type === "Expense" && totalExpense > 0
-                ? Math.round((t.amount / totalExpense) * 100)
-                : 0
-            return (
-              <Group key={t.id} justify="space-between">
-                <div>
-                  <Text fw={500}>
-                    {t.type} — {t.amount.toFixed(2)}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {t.occurredOn?.slice(0, 10)}
-                    {t.description ? ` • ${t.description}` : ""}
-                  </Text>
-                </div>
-                {t.type === "Expense" && pct > 0 && <Badge>{pct}%</Badge>}
-              </Group>
-            )
-          })}
-          {list.length === 0 && (
-            <Text size="sm" c="dimmed">
-              No transactions yet
-            </Text>
-          )}
-        </Stack>
-      </Paper>
+      {/* Add Income Modal */}
+      <AddIncomeModal
+        opened={incomeOpen}
+        onClose={() => setIncomeOpen(false)}
+        onSubmit={(data) => {
+          addIncome(data)
+          setIncomeOpen(false)
+        }}
+      />
+
+      {/* Add Expense Modal */}
+      <AddExpenseModal
+        opened={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+        onSubmit={(data) => {
+          addExpense(data)
+          setExpenseOpen(false)
+        }}
+      />
     </Container>
+  )
+}
+
+/*** Dialogs ***/
+function AddIncomeModal({
+  opened,
+  onClose,
+  onSubmit,
+}: {
+  opened: boolean
+  onClose: () => void
+  onSubmit: (income: Omit<Income, "id">) => void
+}) {
+  const [amount, setAmount] = useState<number | string>("")
+  const [source, setSource] = useState("")
+  const [date, setDate] = useState<string>(new Date().toLocaleDateString())
+
+  const canSubmit =
+    amount !== "" && Number(amount) > 0 && source.trim().length > 0
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Add income" radius="lg">
+      <Stack>
+        <NumberInput
+          label="Amount"
+          value={amount}
+          prefix="$ "
+          thousandSeparator
+          onChange={setAmount}
+          min={0}
+          hideControls
+        />
+        <TextInput
+          label="Source"
+          placeholder="Salary, gift, side job…"
+          value={source}
+          onChange={(e) => setSource(e.currentTarget.value)}
+        />
+        <TextInput
+          label="Date"
+          value={date}
+          onChange={(e) => setDate(e.currentTarget.value)}
+        />
+        <Group justify="space-between" mt="xs">
+          <Button variant="default" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() =>
+              canSubmit && onSubmit({ amount: Number(amount), source, date })
+            }
+            disabled={!canSubmit}
+          >
+            Add income
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+function AddExpenseModal({
+  opened,
+  onClose,
+  onSubmit,
+}: {
+  opened: boolean
+  onClose: () => void
+  onSubmit: (expense: Omit<Expense, "id">) => void
+}) {
+  const [amount, setAmount] = useState<number | string>("")
+  const [category, setCategory] = useState("")
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState<string>(new Date().toLocaleDateString())
+
+  const canSubmit =
+    amount !== "" &&
+    Number(amount) > 0 &&
+    category.trim().length > 0 &&
+    description.trim().length > 0
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Add expense" radius="lg">
+      <Stack>
+        <NumberInput
+          label="Amount"
+          value={amount}
+          prefix="$ "
+          thousandSeparator
+          onChange={setAmount}
+          min={0}
+          hideControls
+        />
+        <TextInput
+          label="Category"
+          placeholder="Transportation, Shopping, …"
+          value={category}
+          onChange={(e) => setCategory(e.currentTarget.value)}
+        />
+        <TextInput
+          label="Description"
+          placeholder="Groceries, Uber, movie night…"
+          value={description}
+          onChange={(e) => setDescription(e.currentTarget.value)}
+        />
+        <TextInput
+          label="Date"
+          value={date}
+          onChange={(e) => setDate(e.currentTarget.value)}
+        />
+        <Group justify="space-between" mt="xs">
+          <Button variant="default" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() =>
+              canSubmit &&
+              onSubmit({ amount: Number(amount), category, description, date })
+            }
+            disabled={!canSubmit}
+          >
+            Add expense
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
