@@ -7,18 +7,17 @@ import {
   Button,
   Card,
   Container,
-  Divider,
   Group,
   Modal,
   NumberInput,
   Progress,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   TextInput,
   Title,
   rem,
+  Loader,
 } from "@mantine/core"
 import { PieChart } from "@mantine/charts"
 import {
@@ -30,20 +29,7 @@ import {
 } from "@tabler/icons-react"
 import { Center } from "@mantine/core"
 
-interface Income {
-  id: string
-  amount: number
-  source: string
-  date: string
-}
-
-interface Expense {
-  id: string
-  amount: number
-  category: string
-  description: string
-  date: string
-}
+import { useMonthData, useTotals } from "./lib/useMoneyApi"
 
 function StatCard({
   label,
@@ -72,10 +58,20 @@ function StatCard({
 }
 
 export default function ExpenseTrackerMantine() {
-  const [incomes, setIncomes] = useState<Income[]>([])
-  const [expenses, setExpenses] = useState<Expense[]>([])
+  // --- Month controls
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth() + 1)
+  const monthLabel = `${year}-${String(month).padStart(2, "0")}`
+
+  // --- Server data + actions
+  const { incomes, expenses, summary, loading, error, addIncome, addExpense } =
+    useMonthData(year, month)
+
+  // --- Local UI state
   const [incomeOpen, setIncomeOpen] = useState(false)
   const [expenseOpen, setExpenseOpen] = useState(false)
+
   const SLICE_COLORS = [
     "teal.6",
     "blue.6",
@@ -85,42 +81,28 @@ export default function ExpenseTrackerMantine() {
     "cyan.6",
   ]
 
-  const totalIncome = useMemo(
-    () => incomes.reduce((sum, i) => sum + i.amount, 0),
-    [incomes]
-  )
-  const totalExpenses = useMemo(
-    () => expenses.reduce((sum, e) => sum + e.amount, 0),
-    [expenses]
-  )
-  const remainingBalance = totalIncome - totalExpenses
-  const spentPercentage =
-    totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0
+  // --- Client-side totals (fallback while summary loads)
+  const { totalIncome, totalExpenses, balance, spentPct, expensesByCategory } =
+    useTotals(incomes, expenses)
 
-  // --- Group by category
-  const expensesByCategory = useMemo(() => {
-    const acc: Record<string, number> = {}
-    for (const e of expenses)
-      acc[e.category] = (acc[e.category] || 0) + e.amount
-    return acc
-  }, [expenses])
+  // Prefer server summary if available
+  const kpiIncome = summary ? summary.totalIncome : totalIncome
+  const kpiExpense = summary ? summary.totalExpenses : totalExpenses
+  const kpiBalance = summary ? summary.remainingBalance : balance
+  const kpiSpentPct = summary ? summary.spentPercentage : spentPct
 
-  const categoryPercentages = useMemo(
-    () =>
-      Object.entries(expensesByCategory).map(([category, amount]) => ({
+  // Pie data: prefer server breakdown, otherwise compute locally
+  const breakdown = summary?.categoryBreakdown?.length
+    ? summary.categoryBreakdown
+    : Object.entries(expensesByCategory).map(([category, amount]) => ({
         category,
         amount,
-        percentage: totalIncome > 0 ? (amount / totalIncome) * 100 : 0,
-      })),
-    [expensesByCategory, totalIncome]
-  )
+      }))
 
-  const addIncome = (income: Omit<Income, "id">) => {
-    setIncomes((prev) => [...prev, { ...income, id: Date.now().toString() }])
-  }
-
-  const addExpense = (expense: Omit<Expense, "id">) => {
-    setExpenses((prev) => [...prev, { ...expense, id: Date.now().toString() }])
+  function changeMonth(delta: number) {
+    const d = new Date(year, month - 1 + delta, 1)
+    setYear(d.getFullYear())
+    setMonth(d.getMonth() + 1)
   }
 
   return (
@@ -131,24 +113,30 @@ export default function ExpenseTrackerMantine() {
         <Text c="dimmed" ta="center">
           Track your income and expenses to stay on top of your finances
         </Text>
+        {error && (
+          <Text c="red" size="sm">
+            Error: {error}
+          </Text>
+        )}
       </Stack>
+
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
         <StatCard
           label="Total Income"
-          value={`$${totalIncome.toLocaleString()}`}
+          value={`$${kpiIncome.toLocaleString()}`}
           color="teal"
           icon={<IconTrendingUp size={18} />}
         />
         <StatCard
           label="Total Expenses"
-          value={`$${totalExpenses.toLocaleString()}`}
+          value={`$${kpiExpense.toLocaleString()}`}
           color="red"
           icon={<IconTrendingDown size={18} />}
         />
         <StatCard
           label="Remaining Balance"
-          value={`$${remainingBalance.toLocaleString()}`}
-          color={remainingBalance >= 0 ? "teal" : "red"}
+          value={`$${kpiBalance.toLocaleString()}`}
+          color={kpiBalance >= 0 ? "teal" : "red"}
           icon={<IconWallet size={18} />}
         />
         <Card withBorder radius="lg" padding="md">
@@ -159,30 +147,44 @@ export default function ExpenseTrackerMantine() {
             <IconCurrencyDollar size={18} />
           </Group>
           <Text fw={700} size="xl">
-            {spentPercentage.toFixed(1)}%
+            {kpiSpentPct.toFixed(1)}%
           </Text>
           <Progress
-            value={spentPercentage}
+            value={Math.max(0, Math.min(100, kpiSpentPct))}
             mt="xs"
             radius="xl"
             aria-label="spent"
           />
         </Card>
       </SimpleGrid>
+
       {/* Spending overview */}
       <Card withBorder radius="lg" mt="md">
         <Group justify="space-between" p="md" pb={0}>
           <Text fw={600}>Spending Overview</Text>
+          <Group gap="xs">
+            <Button variant="light" onClick={() => changeMonth(-1)}>
+              ◀ prev
+            </Button>
+            <Text fw={600}>{monthLabel}</Text>
+            <Button variant="light" onClick={() => changeMonth(1)}>
+              next ▶
+            </Button>
+          </Group>
         </Group>
         <Box p="md">
-          {categoryPercentages.length === 0 ? (
+          {loading && breakdown.length === 0 ? (
+            <Center>
+              <Loader />
+            </Center>
+          ) : breakdown.length === 0 ? (
             <Text c="dimmed" ta="center" py="lg">
               No expenses yet — add one to see the chart
             </Text>
           ) : (
             <Center>
               <PieChart
-                data={categoryPercentages.map((c, i) => ({
+                data={breakdown.map((c, i) => ({
                   name: c.category,
                   value: c.amount,
                   color: SLICE_COLORS[i % SLICE_COLORS.length],
@@ -197,6 +199,7 @@ export default function ExpenseTrackerMantine() {
           )}
         </Box>
       </Card>
+
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mt="md">
         {/* Income */}
         <Card withBorder radius="lg">
@@ -213,7 +216,7 @@ export default function ExpenseTrackerMantine() {
           <Box p="md">
             {incomes.length === 0 ? (
               <Text c="dimmed" ta="center" py="md">
-                No income sources added yet
+                {loading ? "Loading…" : "No income sources added yet"}
               </Text>
             ) : (
               <Stack gap="sm">
@@ -258,7 +261,7 @@ export default function ExpenseTrackerMantine() {
           <Box p="md">
             {expenses.length === 0 ? (
               <Text c="dimmed" ta="center" py="md">
-                No expenses recorded yet
+                {loading ? "Loading…" : "No expenses recorded yet"}
               </Text>
             ) : (
               <Stack gap="sm">
@@ -291,12 +294,19 @@ export default function ExpenseTrackerMantine() {
           </Box>
         </Card>
       </SimpleGrid>
+
       {/* Add Income Modal */}
       <AddIncomeModal
         opened={incomeOpen}
         onClose={() => setIncomeOpen(false)}
-        onSubmit={(data) => {
-          addIncome(data)
+        onSubmit={async (data) => {
+          // Convert string date -> Date (expects ISO "YYYY-MM-DD" or similar)
+          const parsed = new Date(data.date)
+          await addIncome({
+            amount: data.amount,
+            source: data.source,
+            date: parsed,
+          })
           setIncomeOpen(false)
         }}
       />
@@ -304,8 +314,14 @@ export default function ExpenseTrackerMantine() {
       <AddExpenseModal
         opened={expenseOpen}
         onClose={() => setExpenseOpen(false)}
-        onSubmit={(data) => {
-          addExpense(data)
+        onSubmit={async (data) => {
+          const parsed = new Date(data.date)
+          await addExpense({
+            amount: data.amount,
+            category: data.category,
+            description: data.description,
+            date: parsed,
+          })
           setExpenseOpen(false)
         }}
       />
@@ -314,6 +330,14 @@ export default function ExpenseTrackerMantine() {
 }
 
 /*** Dialogs ***/
+type IncomeForm = { amount: number; source: string; date: string }
+type ExpenseForm = {
+  amount: number
+  category: string
+  description: string
+  date: string
+}
+
 function AddIncomeModal({
   opened,
   onClose,
@@ -321,11 +345,14 @@ function AddIncomeModal({
 }: {
   opened: boolean
   onClose: () => void
-  onSubmit: (income: Omit<Income, "id">) => void
+  onSubmit: (income: IncomeForm) => void
 }) {
   const [amount, setAmount] = useState<number | string>("")
   const [source, setSource] = useState("")
-  const [date, setDate] = useState<string>(new Date().toLocaleDateString())
+  // Use ISO by default to avoid locale parsing issues
+  const [date, setDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  )
 
   const canSubmit =
     amount !== "" && Number(amount) > 0 && source.trim().length > 0
@@ -349,7 +376,7 @@ function AddIncomeModal({
           onChange={(e) => setSource(e.currentTarget.value)}
         />
         <TextInput
-          label="Date"
+          label="Date (YYYY-MM-DD)"
           value={date}
           onChange={(e) => setDate(e.currentTarget.value)}
         />
@@ -379,12 +406,14 @@ function AddExpenseModal({
 }: {
   opened: boolean
   onClose: () => void
-  onSubmit: (expense: Omit<Expense, "id">) => void
+  onSubmit: (expense: ExpenseForm) => void
 }) {
   const [amount, setAmount] = useState<number | string>("")
   const [category, setCategory] = useState("")
   const [description, setDescription] = useState("")
-  const [date, setDate] = useState<string>(new Date().toLocaleDateString())
+  const [date, setDate] = useState<string>(
+    new Date().toISOString().slice(0, 10)
+  )
 
   const canSubmit =
     amount !== "" &&
@@ -417,7 +446,7 @@ function AddExpenseModal({
           onChange={(e) => setDescription(e.currentTarget.value)}
         />
         <TextInput
-          label="Date"
+          label="Date (YYYY-MM-DD)"
           value={date}
           onChange={(e) => setDate(e.currentTarget.value)}
         />

@@ -1,6 +1,17 @@
-// Contracts/Dtos.cs
-namespace MoneyApi.Contracts;
+namespace MoneyApi;
 
-public record CreateTxDto(DateTime OccurredOn, string Type, decimal Amount, string? Description);
-public record ListResult(IEnumerable<MoneyApi.Models.TransactionEntry> Items);
-public record SummaryResult(decimal Income, decimal Expense, decimal Balance, decimal SpentPercent);
+public record IncomeCreateDto(string date, decimal amount, string source);
+public record ExpenseCreateDto(string date, decimal amount, string category, string description);
+
+public record IncomeDto(string id, decimal amount, string source, string date);
+public record ExpenseDto(string id, decimal amount, string category, string description, string date);
+
+public record ListResult<T>(IEnumerable<T> items);
+public record SummaryDto(
+    decimal totalIncome,
+    decimal totalExpenses,
+    decimal remainingBalance,
+    decimal spentPercentage,
+    IEnumerable<CategoryAmount> categoryBreakdown
+);
+public record CategoryAmount(string category, decimal amount);

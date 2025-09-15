@@ -1,8 +1,7 @@
-// Program.cs (statements only)
 using Microsoft.EntityFrameworkCore;
+using MoneyApi;
 using MoneyApi.Data;
 using MoneyApi.Models;
-using MoneyApi.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +14,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddCors(opts =>
 {
-    opts.AddDefaultPolicy(policy => policy
+    opts.AddDefaultPolicy(p => p
         .AllowAnyHeader()
         .AllowAnyMethod()
         .WithOrigins(
@@ -29,61 +28,105 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseCors();
 
-// Validation helper
-bool IsValidType(string t) => t is "Income" or "Expense";
+// ---------- Helpers (local functions are fine in top-level files) ----------
+static DateTime ParseIsoDate(string iso) =>
+    DateTime.SpecifyKind(DateTime.Parse(iso), DateTimeKind.Utc).Date;
 
-// POST /api/tx
-app.MapPost("/api/tx", async (CreateTxDto dto, AppDb db) =>
+static string ToIsoDate(DateTime d) => d.ToString("yyyy-MM-dd");
+
+// ---------- Mapping ----------
+static IncomeDto MapIncome(Income i) =>
+    new(i.Id.ToString(), i.Amount, i.Source, ToIsoDate(i.Date));
+
+static ExpenseDto MapExpense(Expense e) =>
+    new(e.Id.ToString(), e.Amount, e.Category, e.Description, ToIsoDate(e.Date));
+
+// ---------- Endpoints ----------
+
+// Add income
+app.MapPost("/api/incomes", async (IncomeCreateDto dto, AppDb db) =>
 {
-    if (!IsValidType(dto.Type)) return Results.BadRequest("Type must be 'Income' or 'Expense'");
-    if (dto.Amount <= 0) return Results.BadRequest("Amount must be > 0");
-
-    var tx = new TransactionEntry
-    {
-        OccurredOn = dto.OccurredOn.Date,
-        Type = dto.Type,
-        Amount = dto.Amount,
-        Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description
-    };
-    db.Transactions.Add(tx);
+    if (dto.amount <= 0) return Results.BadRequest("Amount must be > 0");
+    if (string.IsNullOrWhiteSpace(dto.source)) return Results.BadRequest("Source is required");
+    var inc = new Income { Date = ParseIsoDate(dto.date), Amount = dto.amount, Source = dto.source.Trim() };
+    db.Incomes.Add(inc);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/tx/{tx.Id}", tx);
+    return Results.Created($"/api/incomes/{inc.Id}", MapIncome(inc));
 });
 
-// GET /api/tx?year=&month=
-app.MapGet("/api/tx", async (int? year, int? month, AppDb db) =>
+// Add expense
+app.MapPost("/api/expenses", async (ExpenseCreateDto dto, AppDb db) =>
 {
-    var now = DateTime.UtcNow;
-    var y = year ?? now.Year;
-    var m = month ?? now.Month;
-    var start = new DateTime(y, m, 1);
-    var end = start.AddMonths(1);
+    if (dto.amount <= 0) return Results.BadRequest("Amount must be > 0");
+    if (string.IsNullOrWhiteSpace(dto.category)) return Results.BadRequest("Category is required");
+    if (string.IsNullOrWhiteSpace(dto.description)) return Results.BadRequest("Description is required");
 
-    var items = await db.Transactions
-        .Where(t => t.OccurredOn >= start && t.OccurredOn < end)
-        .OrderByDescending(t => t.OccurredOn).ThenByDescending(t => t.Id)
+    var exp = new Expense
+    {
+        Date = ParseIsoDate(dto.date),
+        Amount = dto.amount,
+        Category = dto.category.Trim(),
+        Description = dto.description.Trim()
+    };
+    db.Expenses.Add(exp);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/expenses/{exp.Id}", MapExpense(exp));
+});
+
+// List incomes for a month
+app.MapGet("/api/incomes", async (int? year, int? month, AppDb db) =>
+{
+    var (start, end) = MonthRange(year, month);
+    var items = await db.Incomes
+        .Where(x => x.Date >= start && x.Date < end)
+        .OrderByDescending(x => x.Date).ThenByDescending(x => x.Id)
         .ToListAsync();
 
-    return Results.Ok(new ListResult(items));
+    return Results.Ok(new ListResult<IncomeDto>(items.Select(MapIncome)));
 });
 
-// GET /api/tx/summary?year=&month=
-app.MapGet("/api/tx/summary", async (int? year, int? month, AppDb db) =>
+// List expenses for a month
+app.MapGet("/api/expenses", async (int? year, int? month, AppDb db) =>
 {
-    var now = DateTime.UtcNow;
-    var y = year ?? now.Year;
-    var m = month ?? now.Month;
+    var (start, end) = MonthRange(year, month);
+    var items = await db.Expenses
+        .Where(x => x.Date >= start && x.Date < end)
+        .OrderByDescending(x => x.Date).ThenByDescending(x => x.Id)
+        .ToListAsync();
+
+    return Results.Ok(new ListResult<ExpenseDto>(items.Select(MapExpense)));
+});
+
+// Summary for a month
+app.MapGet("/api/summary", async (int? year, int? month, AppDb db) =>
+{
+    var (start, end) = MonthRange(year, month);
+
+    var monthIncomes = db.Incomes.Where(x => x.Date >= start && x.Date < end);
+    var monthExpenses = db.Expenses.Where(x => x.Date >= start && x.Date < end);
+
+    var totalIncome = await monthIncomes.SumAsync(x => (decimal?)x.Amount) ?? 0m;
+    var totalExpenses = await monthExpenses.SumAsync(x => (decimal?)x.Amount) ?? 0m;
+    var remaining = totalIncome - totalExpenses;
+    var spentPct = totalIncome <= 0 ? 0m : Math.Round((totalExpenses / totalIncome) * 100m, 1);
+
+    var catGroups = await monthExpenses
+        .GroupBy(e => e.Category)
+        .Select(g => new CategoryAmount(g.Key, g.Sum(x => x.Amount)))
+        .ToListAsync();
+
+    return Results.Ok(new SummaryDto(totalIncome, totalExpenses, remaining, spentPct, catGroups));
+});
+
+// util
+static (DateTime start, DateTime end) MonthRange(int? year, int? month)
+{
+    var today = DateTime.UtcNow;
+    var y = year ?? today.Year;
+    var m = month ?? today.Month;
     var start = new DateTime(y, m, 1);
     var end = start.AddMonths(1);
-
-    var monthQuery = db.Transactions.Where(t => t.OccurredOn >= start && t.OccurredOn < end);
-
-    var income = await monthQuery.Where(t => t.Type == "Income").SumAsync(t => (decimal?)t.Amount) ?? 0m;
-    var expense = await monthQuery.Where(t => t.Type == "Expense").SumAsync(t => (decimal?)t.Amount) ?? 0m;
-    var balance = income - expense;
-    var spentPercent = income <= 0 ? 100m : Math.Min(100m, Math.Round((expense / income) * 100m, 0));
-
-    return Results.Ok(new SummaryResult(income, expense, balance, spentPercent));
-});
+    return (start, end);
+}
 
 app.Run();
