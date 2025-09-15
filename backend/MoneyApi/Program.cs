@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // EF Core + SQLite
 builder.Services.AddDbContext<AppDb>(opt =>
-    opt.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+   opt.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Swagger + CORS
 builder.Services.AddEndpointsApiExplorer();
@@ -121,11 +121,14 @@ app.MapGet("/api/summary", async (int? year, int? month, AppDb db) =>
 // util
 static (DateTime start, DateTime end) MonthRange(int? year, int? month)
 {
-    var today = DateTime.UtcNow;
+    var today = DateTime.UtcNow; // already UTC
     var y = year ?? today.Year;
     var m = month ?? today.Month;
-    var start = new DateTime(y, m, 1);
-    var end = start.AddMonths(1);
+
+    // 👇 set Kind=Utc explicitly (Unspecified is what causes the error)
+    var start = new DateTime(y, m, 1, 0, 0, 0, DateTimeKind.Utc);
+    var end   = start.AddMonths(1); // stays Utc
+
     return (start, end);
 }
 

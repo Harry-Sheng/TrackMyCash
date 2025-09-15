@@ -155,3 +155,5 @@
 /Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/obj/Debug/net9.0/MoneyApi.pdb
 /Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/obj/Debug/net9.0/MoneyApi.genruntimeconfig.cache
 /Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/obj/Debug/net9.0/ref/MoneyApi.dll
+/Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/bin/Debug/net9.0/Npgsql.dll
+/Users/harry/Desktop/Personal/Personal projects/incomeTracker/TrackMyCash/backend/MoneyApi/bin/Debug/net9.0/Npgsql.EntityFrameworkCore.PostgreSQL.dll
